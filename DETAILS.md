@@ -8,20 +8,21 @@ Full-Fine-Tuning von `lightonai/mLateOn-unsupervised` auf Amazon ESCI mit Senten
 (`MultiVectorEncoder`, `CachedMultiVectorMultipleNegativesRankingLoss`, Skala 30, annotierte + geminte Hard
 Negatives), exakte MaxSim-Evaluation gegen BM25, Basismodell und das veröffentlichte Vollmodell
 [`johannhartmann/mlateon-esci-product-search`](https://huggingface.co/johannhartmann/mlateon-esci-product-search),
-LLM-vervollständigte Metriken, Vorher/Nachher-Suche, Export.
+LLM-vervollständigte Metriken, Vorher/Nachher-Suche, Export. Optional mit eigenen Daten statt ESCI.
 
 **Eigenständig:** Nur die `.ipynb` hochladen. Pakete kommen von PyPI (gepinnt: `sentence-transformers[train]==6.1.0`,
 `transformers==5.17.0`, `bm25s==0.3.11`, `PyStemmer==3.1.0`; Torch/NumPy/ipywidgets von Colab bleiben), ESCI von
 GitHub, das Auswertungsmodul `esci_judge.py`, die LLM-Urteile und die Top-10-Listen des Vollkatalog-Laufs aus dem
 öffentlichen Datensatz [`johannhartmann/esci-llm-judged-top10`](https://huggingface.co/datasets/johannhartmann/esci-llm-judged-top10)
-(Revision gepinnt). Sind betroffene Bibliotheken schon importiert, startet die Installationszelle die Laufzeit neu.
+(Revision gepinnt), das veröffentlichte Modell auf Revision `37205e4`. Sind betroffene Bibliotheken schon importiert, startet die
+Installationszelle die Laufzeit neu.
 
 **Profile** (`PROFILE="auto"` wählt nach GPU-Speicher, RAM und Platte; überschreibbar, ebenso `PRECISION`):
 
 | Profil | Training | Katalog / Test-Queries | Auto-Wahl |
 |---|---|---|---|
 | `t4` | 3.000 Queries, ~5.600 Tripel, 44 Schritte | 100.000 Produkte / 1.000 | Standard |
-| `l4` | 6.000 Queries | 150.000 / 1.000 | ≥22 GB GPU, ≥24 GB RAM |
+| `l4` | 6.000 Queries | 150.000 / 1.000 | ≥22 GB GPU, ≥24 GB RAM, ≥40 GB Platte |
 | `a100` | alle ~20k Queries, ~68k Tripel (Rezept des Vollmodells) | 482.105 / 2.000 | ≥38 GB GPU, ≥45 GB RAM, ≥100 GB Platte |
 | `full` | wie `a100` | 482.105 / 8.955 | nur manuell |
 
@@ -31,18 +32,34 @@ sind die Stichprobe des Judge-Datensatzes; Abschnitt 9b rechnet zusätzlich die 
 (identisch mit `results.json`). Neue LLM-Urteile nur mit `REGENERATE_JUDGMENTS=True`, Colab-Secret
 `ANTHROPIC_API_KEY` und harter Grenze `JUDGE_BUDGET_USD`.
 
+**Schalter:** `NEGATIVES` = `labeled+mined` (Default: je ein annotiertes und ein gemintes Negativ), `labeled` oder
+`mined` (je zwei); `RUN_JUDGE_SECTION=False` überspringt Abschnitt 9b (bei eigenen Daten automatisch);
+`COMPARE_PUBLISHED=False` spart den Index des veröffentlichten Modells.
+
+**Eigene Daten:** `DATA_SOURCE="own"`, `OWN_DATA` = CSV/TSV/JSONL/Parquet oder Hugging-Face-Dataset-ID mit einer
+Zeile je Query und passendem Produkttext, optional einem bekannt falschen Produkt; Spaltennamen über `OWN_COLUMNS`,
+optional `OWN_CORPUS` (Spalte `text`, optional `title`) als Katalog, `OWN_LANGUAGE` für BM25. 10 % der Queries Test,
+5 % Dev (durch das Profil gedeckelt). Abschnitt 9b und der Vergleich mit dem veröffentlichten ESCI-Modell entfallen.
+
 **Fortsetzen:** `USE_GOOGLE_DRIVE=True` legt Tripel, Checkpoints (~7 GB), Modell und Ergebnisse auf Drive. Nach
 einem Abbruch erneut *Alle ausführen*: Training setzt am letzten Checkpoint fort, ein fertiges Modell wird nicht neu
 trainiert, Indizes werden per Fingerprint wiederverwendet (lokal, gehen mit der Laufzeit verloren).
-**Export:** `HUB_REPO_ID` + Colab-Secret `HF_TOKEN` (Schreibrecht) → `push_to_hub`; `COPY_TO_DRIVE=True` → Drive.
+**Export:** standardmäßig kein Upload. `HUB_REPO_ID` + `PUSH_TO_HUB=True` + Colab-Secret `HF_TOKEN` (Schreibrecht)
+→ `push_to_hub` (privat); `COPY_TO_DRIVE=True` → Drive.
 
 ### Getesteter Lauf
 
-Kein echtes Colab: frische Python-3.12-Umgebung mit Colab-ähnlichem Stack (torch 2.8.0, numpy 2.0.2, pandas 2.2.2,
-pyarrow 18.1, transformers 4.57, sentence-transformers 5.1, datasets 4.0, ipywidgets 7.7.1), eigener Kernel,
-Ausführung mit nbclient inklusive Installationszelle. Profil `t4` erzwungen, **FP16**, VRAM per
-`set_per_process_memory_fraction` auf 15 GiB gedeckelt, RTX A6000 geteilt mit anderen Jobs (Laufzeiten daher
-Obergrenzen für A6000-Klasse; eine echte T4 ist langsamer).
+Kein echtes Colab: frische uv-Umgebung (Python 3.12) mit Colab-ähnlichem Stack vor der Installation (torch 2.8.0,
+numpy 2.0.2, pandas 2.2.2, pyarrow 18.1, transformers 4.57.1, sentence-transformers 5.1.0, datasets 4.0, ipywidgets
+7.7.1), eigener Kernel, Ausführung mit nbclient inklusive Installationszelle, `TRAINING_DEMO_LOCAL` nicht gesetzt,
+kein `HF_TOKEN`. Profil `t4` erzwungen, **FP16**, VRAM per `set_per_process_memory_fraction` auf 14 GiB gedeckelt,
+RTX A6000 geteilt mit anderen Jobs. **Alle Laufzeiten sind A6000-Zeiten im `t4`-Profil**; eine echte T4 ist
+langsamer (Schätzung nach Datenblatt: zwei- bis dreimal so lange, nicht gemessen).
+
+Ablauf des Tests: ein frischer Lauf bis einschließlich Index des veröffentlichten Modells; dort brach der Test-Harness ab,
+weil das Plattenkontingent der Testmaschine voll lief (nicht das Notebook). Der Rest lief als Fortsetzung im selben Arbeitsverzeichnis
+(*Alle ausführen* mit `RESUME=True`: Tripel, Modell und beide fertigen Indizes wiederverwendet, Training
+übersprungen, Index des eigenen Modells neu gebaut) – damit ist auch der Fortsetzungsweg geprüft.
 
 1.000 Test-Queries, exakt über 100.000 Produkte (Teilkatalog):
 
@@ -51,28 +68,35 @@ Obergrenzen für A6000-Klasse; eine echte T4 ist langsamer).
 | BM25 | 0,407 | 0,724 | 0,431 | 0,576 |
 | mLateOn-unsupervised (Basis) | 0,487 | 0,791 | 0,517 | 0,662 |
 | mlateon-esci-product-search (veröffentlicht, Profil `full`) | 0,535 | 0,841 | 0,572 | 0,712 |
-| **Eigenes Training (Profil `t4`, 9 min)** | **0,533** | **0,835** | **0,561** | **0,693** |
+| **Eigenes Training (Profil `t4`, 44 Schritte, 8,6 min)** | **0,534** | **0,835** | **0,562** | **0,696** |
 
-Eigenes Training vs. Basis: Recall@100 +0,044 (95-%-KI +0,035 bis +0,053), nDCG@10 +0,044 (+0,035 bis +0,052).
-Dev-nDCG@10 0,643 → 0,678. LLM-vervollständigt (dieselben 1.000 Queries): nDCG@10 Basis 0,545 → eigenes 0,586,
-veröffentlicht 0,598; 25 % der eigenen Top-10 liegen außerhalb des gelabelten Pools.
+Eigenes Training vs. Basis: Recall@100 +0,044 (95-%-KI +0,034 bis +0,052), nDCG@10 +0,045 (+0,037 bis +0,053).
+Dev-nDCG@10 0,643 → 0,674 (Schritt 25) → 0,679 (Schritt 44, bester Checkpoint). LLM-vervollständigt (dieselben
+1.000 Queries): nDCG@10 Basis 0,545 → eigenes 0,587, veröffentlicht 0,598; 25 % der eigenen Top-10 liegen
+außerhalb des gelabelten Pools. Vollkatalog-Referenz aus dem Hub: Abweichung zu `results.json` 0.
+Skala des MaxSim-Scores (500 Trainingstripel, Basismodell): Ø 7,8 Query-Tokens, Median Positiv 4,56, Negativ 4,48,
+Abstand 0,045 (Zahlen in Abschnitt 6).
 
 | Phase (Profil `t4`, FP16, geteilte A6000) | Minuten |
 |---|---|
-| Installation (Pakete im pip-Cache) / ESCI-Download (1,2 GB) | 0,1 / 0,6 |
-| Index Basismodell (100k Produkte, 3,7 GiB) | 15,3 |
-| Hard-Negative-Mining / Dev-Evaluation vorher | 0,9 / 1,1 |
-| Training (44 Schritte, 2 Dev-Evaluationen) | 8,7 |
-| BM25 / Suche Basismodell | 0,3 / 0,3 |
-| Index + Suche veröffentlichtes / eigenes Modell | 12,7 / 16,6 |
-| Gesamt | ~57 |
+| Installation (Pakete im pip-Cache) / ESCI-Download (1,2 GB) | 1,2 / 0,6–3,7 (je nach Leitung) |
+| Index Basismodell (100k Produkte, 3,7 GiB, ~155 Token-Vektoren je Produkt) | 9,5 (in einem Lauf mit stärker belegter GPU 16,3) |
+| Hard-Negative-Mining / Dev-Evaluation vorher | 1,0 / 1,1 |
+| Training (44 Schritte, 2 Dev-Evaluationen) | 8,6 |
+| BM25 / Suche Basismodell | 0,2 / 0,2 |
+| Index + Suche veröffentlichtes / eigenes Modell | 6,6 / 3,3 |
+| Abschnitt 9b (Urteile vom Hub, Metriken) / Vorher-Nachher-Suche | 1,4 / 0,1 |
+| Gesamt (Rechenzeit) | ~40 |
 
-Spitzen: GPU 7,9 GiB (PyTorch, Training; nvidia-smi 9,1 GiB), RAM 6,2 GiB anonym (RSS 17,7 GiB inkl. per
-`memmap` gelesener Index-Seiten, vom Kernel freigebbar), Platte 20,5 GiB. Profile `l4`, `a100`, `full` sind nicht
-ausgeführt worden. Geprüft wurden außerdem: Fortsetzen nach Abbruch (Index und Tripel wiederverwendet), erneuter
-Lauf mit fertigem Modell (Training übersprungen, alle Indizes wiederverwendet, 2,6 min, identische Metriken), Colab-Guards ohne `google.colab` und mit gefälschtem Modul
-(fehlendes Secret, Drive-Mount), Export ohne Token, Neuberechnungspfad mit Dummy-Key und Budget 0 (distilabel
-installiert, BudgetGuard stoppt vor jedem API-Aufruf, $0,00).
+Nicht mitgezählt: Auf der Testmaschine hingen Hub-Anfragen aus Python beim Laden des Basismodells jedes Mal ~18 min
+(Netzwerkproblem der Testmaschine; `curl` auf dieselben URLs antwortete sofort). Spitzen: GPU 8,0 GiB (PyTorch,
+Training; nvidia-smi bis 13,7 GiB inkl. Cache), RAM 6,0 GiB anonym (RSS 17,5 GiB inkl. per `memmap` gelesener
+Index-Seiten), Platte 17,7 GiB. Profile `l4`, `a100`, `full` sind nicht ausgeführt worden. Geprüft wurden außerdem:
+Export mit Standardwerten (kein Upload), `HUB_REPO_ID` gesetzt ohne `PUSH_TO_HUB` (kein Upload), `PUSH_TO_HUB` ohne
+Token (Upload übersprungen), Colab-Guards ohne `google.colab`, und der Eigene-Daten-Weg mit *Alle ausführen*: CSV mit
+eigenen Spaltennamen (1.156 Zeilen, 600 Queries, 362 davon mit Negativ) plus JSONL-Katalog (16.909
+Produkte), `NEGATIVES` Default – 943 Tripel, 8 Schritte, alle Zellen ohne Fehler (Recall@100 auf 60 Test-Queries 0,900 → 0,925; reiner Funktionstest); Abschnitt 9b meldet „übersprungen“, kein Vergleich mit dem
+veröffentlichten Modell.
 
 ## 02 · Decision-Crawler trainieren (`02_decision_crawler_trainieren_colab.ipynb`)
 
@@ -81,12 +105,14 @@ BrowserGym-v0.13.3-Beobachtung (Markierungsskripte von GitHub, SHA-256 geprüft)
 Entscheidung, Split nach Website, Auftragsfilter aus [`johannhartmann/nnetnav-live-objective-filter`](https://huggingface.co/datasets/johannhartmann/nnetnav-live-objective-filter)
 (Commit `80eefb0`), echtes Training in Colab-Größe, Held-out-Evaluation für Basis / eigenes / veröffentlichter Adapter
 [`johannhartmann/decider-2b-a11y-crawler-lora`](https://huggingface.co/johannhartmann/decider-2b-a11y-crawler-lora) (v2, Commit
-`39421be`), 16 Live-Aufgaben auf Scraping-Übungsseiten mit Datenextraktion, Korrekturen + Weitertraining, Upload.
+`39421be`), 16 Live-Aufgaben auf Scraping-Übungsseiten mit Datenextraktion, optional Korrekturen + Weitertraining und Upload.
 
 **Eigenständig:** Nur die `.ipynb` hochladen. `objective_filter.py` kommt aus dem Modell-Repo (`training/02_data/`, Commit
 `39421be`, SHA-256 = aktuelle `02_data/objective_filter.py` inklusive der Korrektur für distilabels Rich-Tracebacks).
 `decider-ai==1.5.0` mit `--no-deps` (Colabs numpy 2 bleibt), dazu `transformers==5.17.0`, `peft==0.21.0`,
-`flash-linear-attention==0.5.2`, `playwright==1.57.0`, `distilabel==1.5.3`; Chromium per `playwright install --with-deps`
+`flash-linear-attention==0.5.2`, `playwright==1.57.0`, `distilabel==1.5.3` exakt gepinnt; Hilfspakete (`accelerate`,
+`huggingface_hub`, `anthropic`, `jinja2`, `requests`, `matplotlib`) nur mit Versionsbereichen, damit Colabs Versionen bleiben
+(die Zelle gibt die installierten aus); Chromium per `playwright install --with-deps`
 (ohne apt nur Chromium). `train.jsonl` (3,2 GB) wird einmal geladen und zeilenweise gelesen; Metadaten, Held-out-Auswahl und
 die gezogenen Trainingsentscheidungen landen im Laufverzeichnis, ein fortgesetzter Lauf braucht die Datei nicht mehr
 (`NNETNAV_ON_DRIVE=True` cacht sie zusätzlich auf Drive).
@@ -99,6 +125,11 @@ die gezogenen Trainingsentscheidungen landen im Laufverzeichnis, ein fortgesetzt
 | `l4` | 4.000 + 400, max. 3 je Aufgabe | 12.288 | 600 (+400) | ≥ 20 GiB GPU |
 | `a100` | 8.000 + 800 | 16.384 | 600 (+400) | ≥ 38 GiB GPU |
 | `full` | alle 26.969 + 2.613 (Rezept von v2, 29 h auf einer A6000) | 24.576 | 600 (+400) | nur manuell |
+
+**Dauer** (Testlauf `t4`, A6000 im T4-Modus): ~1,5 h ohne, ~2 h mit Korrekturschleife, davon Training ~60 min und
+Held-out-Auswertung ~19 min. Auf einer echten T4 nicht gemessen; die Notebook-Schätzung fürs Training liegt bei ~3,8 h,
+insgesamt eher 4–5 h oder mehr. Kostenlose Colab-Sitzungen können vorher enden; erneutes *Alle ausführen* setzt dank Drive
+am letzten Checkpoint fort.
 
 Die Held-out-Auswahl ist unabhängig vom Profil die des vollen Laufs (Fingerabdruck `ddb7f70a…/2d09f61d…` wird gegen
 `decision_contract.json` von v2 geprüft), ebenso die 160 Validierungsaufgaben. Vor dem Training steht eine grobe
@@ -120,15 +151,22 @@ nach `FILTER_SYNC_REPO` nur mit Schreibrecht.
 
 **Drive/Fortsetzen/Export:** `USE_DRIVE=True` legt alles unter `MyDrive/a11y-training` ab (Checkpoints ~200 MB alle 25
 Schritte, maximal zwei). Das Laufverzeichnis ergibt sich aus Profil, Präzision und Rezept; erneut *Alle ausführen* setzt
-das Training fort und lädt fertige Auswertungen und Crawls. Mit Secret `HF_TOKEN` (Schreibrecht) lädt Abschnitt 12 Adapter,
-`continued/`, `decision_contract.json`, `inference.py`, `training/` (Filtermodul, Rezept, Logs, Auswertungen) und eine
-Modellkarte nach `<user>/decider-2b-a11y-crawler-lora-colab` (privat).
+das Training fort und lädt fertige Auswertungen und Crawls. Hochgeladen wird nur mit `PUSH_ADAPTER=True` (Standard aus) und
+Secret `HF_TOKEN` mit Schreibrecht: Abschnitt 12 lädt dann Adapter, `continued/`, `decision_contract.json`, `inference.py`,
+`training/` (Filtermodul, Rezept, Logs, Auswertungen) und eine Modellkarte nach `<user>/decider-2b-a11y-crawler-lora-colab`
+(privat).
+
+**Korrekturschleife** (Abschnitt 11, `RUN_CORRECTIONS`, Standard aus, Schalter in der Zelle selbst): Durchsicht-Tabelle,
+falsche Referenzschritte in `REJECT`, dann Weitertraining. Adapter und Auswertungen danach liegen unter einem Schlüssel aus
+den angenommenen Korrekturen (`adapter-continued-<Schlüssel>/`, `live_*_continued_<Schlüssel>.json`,
+`heldout_continued_<Schlüssel>.csv`); ein geändertes `REJECT` trainiert und wertet deshalb automatisch neu aus, und
+weitertrainiert wird immer vom ursprünglichen Adapter.
 
 ### Getesteter Lauf
 
 Kein echtes Colab: frische Python-3.12-Umgebung (torch 2.8.0, numpy 2.0.2, pandas 2.2.2, transformers 4.57, datasets 4.0,
-ipywidgets 7.7.1), eigener Kernel, nbclient inklusive Installationszelle, leeres Arbeits-, HF-Cache- und Playwright-Verzeichnis,
-ohne Tokens. Profil `t4` erzwungen, **FP16**, dazu wie auf einer T4 Flash-SDPA abgeschaltet (Math-SDPA ebenfalls, damit ein
+ipywidgets 7.7.1, nur IPv4), eigener Kernel, nbclient inklusive Installationszelle, leeres Arbeits-, HF-Cache- und
+Playwright-Verzeichnis, ohne Tokens. Profil `t4` erzwungen, **FP16**, dazu wie auf einer T4 Flash-SDPA abgeschaltet (Math-SDPA ebenfalls, damit ein
 quadratischer Rückfall als Fehler auffiele), VRAM auf 14 GiB gedeckelt, RTX A6000 geteilt mit anderen Jobs. Chromium-Bibliotheken
 kamen lokal per `LD_LIBRARY_PATH` (NixOS, kein apt), der `--with-deps`-Zweig lief deshalb nicht.
 
@@ -138,8 +176,8 @@ Held-out-Sites, erste 300 Aktions- und alle 400 Texteingabe-Entscheidungen; live
 |---|---|---|---|---|
 | Decider-2B Basis | 8,7 % | 22,3 % | – (Referenz 6/16) | – |
 | v2, veröffentlicht (BF16-Referenzlauf: 44,3 % / 75,8 %) | 44,3 % | 75,8 % | 13/16 | 12/16 |
-| **eigenes, Profil `t4` (2.000 + 200, 60 min)** | **38,3 %** | **64,3 %** | **12/16** | **12/16** |
-| eigenes + Korrektur | Teilmenge 100: 39 → 35 % | – | 13/16 | 12/16 |
+| **eigenes, Profil `t4` (2.000 + 200, 60–92 min)** | **38,3 %** | **64,3–64,8 %** | **12/16** | **12/16** |
+| eigenes + Korrektur (optional) | Teilmenge 100: 39 → 34–37 % (Rauschen) | – | 13–16/16 | 12–14/16 |
 
 Eigenes vs. Basis: 100 nur eigenes richtig, 11 nur Basis. Eigenes vs. v2: 17 zu 35 (Vorzeichentest p ≈ 0,013). Je Aktion
 eigenes / v2: click 14,6 / 19,4 %, type 50,0 / 64,8 %, stop 80,0 / 70,8 %, scroll 7,7 / 15,4 %, go_back 11,1 / 33,3 %.
@@ -164,7 +202,22 @@ Tokenbudget im Weitertraining lief dort in einen OOM (37k-Token-Seite mit Gradie
 erneutes *Alle ausführen* im selben Verzeichnis nach 16 min fort (alles bis dahin aus dem Cache, ohne `train.jsonl`). Geprüft
 außerdem: Colab-Guards ohne `google.colab` und mit gefälschtem Modul (Secret fehlt/vorhanden, Drive-Mount abgelehnt), Upload
 ohne Token, Neuerzeugung des Filters mit Dummy-Key und Budget 0 (8 Aufgaben aus dem Hub-Cache, 8/8 wie veröffentlicht,
-$0,00, Kostenbuch ohne neue Einträge). Nicht getestet: echte T4 (Triton-Kernel von flash-linear-attention auf sm75,
+$0,00, Kostenbuch ohne neue Einträge).
+
+**Nachtest nach der Überarbeitung** (Standards: `RUN_CORRECTIONS` und `PUSH_ADAPTER` aus; frische Umgebung, frisches
+Arbeitsverzeichnis, gleiche Simulation): identische Validierung (43,3 → 45,0 %, Schritt 200), identische
+Held-out-Vorhersagen des eigenen Adapters, Held-out 8,7 / 44,3 / 38,3 %, Eingabetext 22,3 / 75,8 / 64,8 %, live eigenes 12/16
+(Daten 12/16), v2 13/16 (12/16). Die GPU war stärker geteilt: Training 92 min, Held-out 28 min. Der Lauf brach einmal von
+außen ab (Plattenkontingent des Testrechners) und setzte mit erneutem *Alle ausführen* aus dem Cache fort. Abschnitt 11 wurde
+übersprungen, Abschnitt 12 meldete „PUSH_ADAPTER ist aus“, keine neuen Anthropic-Kosten. Danach mit `RUN_CORRECTIONS=True`
+im selben Verzeichnis: Korrekturen sammeln 4 min, Weitertraining 6 min, Auswertung 6 min; dann ein korrigierter Schritt in
+Ohne `REJECT`: 25 geprüfte Zustände, 6 über 8.192 Tokens ausgelassen, 5 Korrekturen; Korrekturaufgaben 7/10 → 9/10,
+Prüfaufgaben 16/16 (Daten 14/16), Teilmenge (100) 39 → 37 %. Dann ein korrigierter Schritt in `REJECT`: neuer Schlüssel,
+neues Weitertraining und neue Auswertung (9/10, 13/16, 39 → 34 %); `REJECT` zurück auf leer: alter Schlüssel, Adapter
+geladen statt trainiert. Die Live-Zahlen schwanken zwischen Läufen (die Websites sind live), die Teilmenge ist mit n = 100
+Rauschen.
+
+Nicht getestet: echte T4 (Triton-Kernel von flash-linear-attention auf sm75,
 Laufzeit), `--with-deps` in Colab, Profile `l4`/`a100`/`full`, Upload mit echtem Token, Drive-Durchsatz.
 
 ## 03 · Tool-Call-Guard trainieren (`03_toolcall_guard_trainieren_colab.ipynb`)
@@ -174,8 +227,8 @@ LoRA auf `Mapika/decider-2b` (v11, Commit `533964d`) als Guard (CONTINUE/ASK/BLO
 Teacher-Referenz aus dem Cache, echtes Training (Colab-Standard **1 Epoche**, 197 Schritte), Reload, Auswertung auf
 `test_seen_tools`/`test_unseen_tools` und ASSEBench (menschliche Labels, zur Laufzeit gebaut), der veröffentlichte
 Adapter [`johannhartmann/decider-2b-toolcall-guard-lora`](https://huggingface.co/johannhartmann/decider-2b-toolcall-guard-lora)
-(2 Epochen) als zusätzliches System, Schwelle, `ToolCallGuard` mit AgentDojo-Demo, Review-Widget, Weitertraining,
-Upload des eigenen Adapters.
+(2 Epochen) als zusätzliches System, Schwelle, `ToolCallGuard` mit AgentDojo-Demo, Review-Widget, optional
+Weitertraining und Upload des eigenen Adapters.
 
 **Eigenständig:** `guard_data.py` kommt aus dem Adapter-Repo (`training/guard_data.py`, Revision `75d1221`,
 SHA-256 geprüft); die spätere Sicherheitskorrektur (Rich-Tracebacks von distilabel ohne `show_locals`) wird im
@@ -187,39 +240,49 @@ und `decider.model` nutzen kein numpy), dazu die echten Laufzeitabhängigkeiten;
 **GPU:** L4/A100 in BF16. Eine T4 hat kein natives BF16 (`torch.cuda.is_bf16_supported()` meldet dort wegen
 Emulation trotzdem True, geprüft wird die Compute Capability); `PRECISION='auto'` schaltet dann auf FP16 (Gewichte
 FP16, LoRA FP32, Loss-Scaling). Gegen FP32 auf 300 ungesehenen Testfällen: gleiche argmax-Entscheidung FP16
-99,3 % (Basis) / 100 % (veröffentlichter Adapter), BF16 98,3 % / 100 %; kein NaN. Im FP16-Notebooklauf erreicht der
-veröffentlichte Adapter exakt die BF16-Accuracy (0,802 / 0,777).
+99,3 % (Basis) / 100 % (veröffentlichter Adapter), BF16 98,3 % / 100 %; kein NaN. Eine echte T4 ist nicht getestet.
 
 **Kosten:** `ALLOW_PAID_API=False`. Die Sonnet-Teacher-Antworten kommen aus `raw/teacher_eval_cache.sqlite` im
 Datensatz-Repo; 4 der 1.032 ASSEBench-Fälle fehlen dort (im Originallauf `refusal`, nicht gecacht) und zählen wie
-im Original fail-safe als ASK. Bezahlte Schritte nur mit `ALLOW_PAID_API=True` + Secret `ANTHROPIC_API_KEY`, mit
-denselben Budgetgrenzen und Hub-Sync (Upload nur mit Schreibrecht, sonst lokal mit Hinweis).
+im Original fail-safe als ASK. `HUB_SYNC` holt nur die beiden Antwort-Caches vom Hub (das Kostenbuch nicht) und lädt
+Caches und Kostenbuch nach bezahlten Schritten hoch (nur mit Schreibrecht, sonst lokal mit Hinweis). Bezahlte Schritte
+nur mit `ALLOW_PAID_API=True` + Secret `ANTHROPIC_API_KEY`; ein voller Neuaufbau kostet ohne Cache ~60 USD
+(dann `GENERATION_BUDGET_USD`, Default 2, anheben), mit dem Hub-Cache nahezu 0.
+
+**Standardmäßig aus:** `RUN_CONTINUATION` (Weitertraining mit geprüften Fällen, ~10–12 min), `USE_AUTHOR_REVIEWS`
+(die 7 Reviews aus dem Notebook dafür mitverwenden; sie werden nie in die eigene Review-Datei geschrieben) und
+`PUSH_ADAPTER` (Upload nur, wenn an **und** `HF_TOKEN` mit Schreibrecht vorhanden).
 
 **Drive/Fortsetzen/Export:** `USE_DRIVE=True` legt Checkpoints (alle 50 Schritte), Adapter und Reviews nach
-`MyDrive/toolcall-training`; `RESUME_RUN=<Ordner>` setzt ein abgebrochenes Training fort. Mit Secret `HF_TOKEN`
-(Schreibrecht) lädt Abschnitt 14 Adapter, `continued/`, `guard_contract.json`, `inference.py`, `training/guard_data.py`
-und eine Modellkarte nach `<user>/decider-2b-toolcall-guard-lora-colab` (privat).
+`MyDrive/toolcall-training`; `RESUME_RUN=<Ordner>` setzt ein abgebrochenes Training fort. Mit `PUSH_ADAPTER=True`
+und Secret `HF_TOKEN` (Schreibrecht) lädt Abschnitt 14 Adapter, ggf. `continued/`, `guard_contract.json`,
+`inference.py`, `training/guard_data.py` und eine Modellkarte nach `<user>/decider-2b-toolcall-guard-lora-colab`
+(privat); geladen wird er wie in der Modellkarte über `hf_hub_download` + `importlib`.
 
 ### Getesteter Lauf
 
 Kein echtes Colab: frische Python-3.12-Umgebung (torch 2.8.0+cu126, numpy 2.0.2, pandas 2.2.2, transformers 4.57,
 datasets 4.0, ipywidgets 7.7.1), eigener Kernel, nbclient inklusive Installationszelle, leeres Arbeits- und
-HF-Cache-Verzeichnis, ohne Tokens. RTX A6000, geteilt mit anderen Jobs (Zeiten sind Obergrenzen für diese Klasse).
+HF-Home-Verzeichnis (Download-Cache wiederverwendet), ohne Tokens, `TRAINING_DEMO_LOCAL` nicht gesetzt,
+Default-Konfiguration in BF16. RTX A6000, geteilt mit anderen Jobs (Zeiten sind Obergrenzen für diese Klasse).
 
-| System | Acc. seen / unseen | Macro-F1 seen / unseen | ASSEBench binär |
-|---|---|---|---|
-| Decider-2B Basis | 0,476 / 0,532 | 0,409 / 0,468 | 0,608 |
-| **eigenes LoRA, 1 Epoche (BF16)** | **0,768 / 0,767** | **0,676 / 0,679** | **0,629** |
-| veröffentlicht, 2 Epochen | 0,802 / 0,777 | 0,712 / 0,694 | 0,650 |
-| eigenes + 7 Reviews | 0,780 / 0,744 | 0,674 / 0,627 | 0,690 |
-| Claude Sonnet 5 (Cache) | – | – | 0,789 |
+| System | Acc. seen / unseen | Macro-F1 seen / unseen | ASSEBench binär | ASSEBench unsafe durchgelassen |
+|---|---|---|---|---|
+| Decider-2B Basis | 0,476 / 0,532 | 0,409 / 0,468 | 0,608 | 0,580 |
+| **eigenes LoRA, 1 Epoche (BF16)** | **0,772 / 0,768** | **0,679 / 0,682** | **0,622** | **0,598** |
+| veröffentlicht, 2 Epochen | 0,802 / 0,777 | 0,712 / 0,694 | 0,650 | 0,530 |
+| eigenes + 7 Reviews (`RUN_CONTINUATION`, `USE_AUTHOR_REVIEWS`) | 0,768 / 0,742 | 0,660 / 0,621 | 0,689 | 0,386 |
+| Claude Sonnet 5 (Cache) | – | – | 0,789 | 0,297 |
 
 Schwelle auf `val`: CONTINUE ab p ≥ 0,7 → falsches CONTINUE 3,8 % / 4,9 %. Eigenes und veröffentlichtes Modell
-entscheiden auf 91 % / 92 % der Testfälle gleich. AgentDojo-Demo: Angreifer-`send_money` wird geblockt.
+entscheiden auf 91,0 % / 92,2 % der Testfälle gleich. AgentDojo-Demo: Angreifer-`send_money` wird geblockt.
+Ein früherer Lauf derselben Konfiguration lag bei 0,768 / 0,767 (Training ist nicht bitgenau reproduzierbar).
 
-Laufzeit BF16: Installation 0,2 min (pip-Cache), bis Baselines + Teacher 7,6 min, Training 28,9 min (Peak 5,7 GiB),
-Gesamt 66,7 min. Zweiter Lauf mit `PRECISION='fp16'` und auf 40 Schritte begrenztem Training (nur im Test): alle
-Zellen fehlerfrei, Loss-Verlauf wie in BF16, 38 min gesamt. Kostenbuch in beiden Läufen leer ($0,00). Colab-Guards
-geprüft ohne `google.colab` und mit gefälschtem Modul (Drive-Mount abgelehnt → lokale Ausgaben, Secret gelesen und
-nicht ausgegeben). Nicht getestet: echte T4 (Triton-Kernel von flash-linear-attention auf sm75), L4/A100-Laufzeiten,
-Upload mit echtem Token, `RESUME_RUN` über Sitzungen, Widget-Darstellung im Colab-Frontend.
+Laufzeit: Installation 4,7 min mit leerem pip-Cache (0,3 min mit warmem), Basis-Auswertung 2,4 min, Training
+34,3 min (Peak 5,7 GiB; früherer Lauf 28,9 min), Auswertung eigener Adapter 10,9 min, veröffentlichter Adapter
+8,5 min; Default-Lauf gesamt 58,6 min. Default: Weitertraining übersprungen, kein Upload, Review-Datei bleibt leer.
+Danach im selben Kernel `RUN_CONTINUATION=True` + `USE_AUTHOR_REVIEWS=True`: 7 verwendbare Fälle, vorher 4 → nachher
+7 von 7 richtig, 10,3 min. `PUSH_ADAPTER=True` ohne Token: sauberer Abbruch mit Hinweis. Kostenbuch: kein neuer
+Eintrag, keine Anthropic-Aufrufe. Test-Harness-Eingriff: IPv4-only-Namensauflösung im Kernel (IPv6 zum HF-CDN ist auf
+dem Testhost nicht routbar). Nicht getestet: echte T4 (Triton-Kernel von flash-linear-attention auf sm75),
+L4/A100-Laufzeiten, Upload mit echtem Token, `RESUME_RUN` über Sitzungen, Widget-Darstellung im Colab-Frontend.
